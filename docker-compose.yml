@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  noswarmia:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+        TOKEN: ${GITHUB_TOKEN}
+    volumes:
+      - ./output:/usr/src/app/output
+    
