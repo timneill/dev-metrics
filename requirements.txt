@@ -1,1 +1,3 @@
 requests
+rich
+dependency-injector

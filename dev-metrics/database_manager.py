@@ -11,8 +11,11 @@ class DatabaseManager:
     @contextmanager
     def connection(self):
         conn = sqlite3.connect(self.db_path)
+        
         try:
             yield conn
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
         finally:
             conn.close()
 
@@ -51,7 +54,7 @@ class DatabaseManager:
             cursor.executescript('''CREATE TABLE IF NOT EXISTS last_fetch (
                                 repo_full_name TEXT PRIMARY KEY,
                                 last_fetch_timestamp TEXT)''')
-
+            
             conn.commit()
 
     # ------------------------------------------------------------------------------------------------------------------------------------------------

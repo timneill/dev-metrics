@@ -2,29 +2,15 @@ import os
 from datetime import datetime
 from database_manager import DatabaseManager
 from github_api import GitHubAPI
+from container import Container
+from utilities import calculate_cycle_time
 import argparse
 from typing import List, Any
+from dependency_injector.wiring import Provide, inject
 
 # Config variables
-ORG = "productsupcom"
-TOKEN = os.getenv('TOKEN')
-DB_PATH = "./output/github_prs.db"
-
-# ------------------------------------------------------------------------------------------------------------------------------------------------
-def calculate_cycle_time(first_commit_datetime, pr_created_datetime, pr_merged_at=None):
-    # Use the earlier of 'first_commit_datetime' and 'pr_created_datetime' as the start date
-    start_date = min(first_commit_datetime, pr_created_datetime)
-
-    if pr_merged_at:
-        # If the PR is merged, calculate the difference between the merge date and the start date
-        pr_merged_datetime = datetime.strptime(pr_merged_at, "%Y-%m-%dT%H:%M:%SZ")
-        cycle_time_days = (pr_merged_datetime - start_date).days
-    else:
-        # If the PR is not merged (e.g., closed without merging), consider the current time or another logic
-        now = datetime.utcnow()
-        cycle_time_days = (now - start_date).days
-
-    return cycle_time_days
+ORG = os.getenv("GH_TARGET_ORG")
+TOKEN = os.getenv('GH_TOKEN')
 
 # ------------------------------------------------------------------------------------------------------------------------------------------------
 def insert_prs_to_db(prs: List[Any], database: DatabaseManager, github: GitHubAPI) -> None:
@@ -59,46 +45,55 @@ def insert_prs_to_db(prs: List[Any], database: DatabaseManager, github: GitHubAP
             database.insert_cycle_time_metrics(pr_data=cycle_time_data)
 
 # ------------------------------------------------------------------------------------------------------------------------------------------------
-def main(): 
-    database = DatabaseManager(db_path=DB_PATH)
+@inject
+def main(database: DatabaseManager = Provide[Container.database], github: GitHubAPI = Provide[Container.github_api_client]) -> None: 
     database.create_tables()
-
-    github = GitHubAPI(token=TOKEN, org=ORG)
 
     parser = argparse.ArgumentParser(description="GitHub Repository Management Script")
     parser.add_argument('--fetch-prs', action='store_true', help="Fetch and update pull request information")
     parser.add_argument('--fetch-branches', action='store_true', help="Fetch and update branch information")
     args = parser.parse_args()
-
-    repos = github.fetch_org_repos()
-    all_open_prs = []
-
-    for repo in repos:
-        last_fetch_timestamp = database.get_last_fetch_timestamp(repo['full_name']) or "1970-01-01T00:00:00Z"
-        
-        if github.has_repo_activity_since_last_fetch(repo_full_name=repo['full_name'], last_fetch_timestamp=last_fetch_timestamp):
-            if args.fetch_branches:
-                print(f"Fetching latest commit data for branches in {repo['full_name']}")
-                branch_info = github.fetch_branch_latest_commit(repo_full_name=repo['full_name'])
-                if branch_info:
-                    database.insert_branches_to_db(branches=branch_info)
-
-            if args.fetch_prs:
-                print(f"Fetching open PRs for {repo['full_name']}")
-                open_prs = github.fetch_pull_requests_for_repo(repo_full_name=repo['full_name'])
-                all_open_prs.extend(open_prs)
-
-            # Update the last fetch timestamp to the current time
-            database.update_last_fetch_timestamp(repo['full_name'], datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
-        else:
-            print(f"No activity since last fetch for {repo['full_name']}, skipping...")
     
-    if all_open_prs:
-        insert_prs_to_db(all_open_prs, database, github)
-        print("Updated PRs data in the database.")
-    else:
-        print("No updates to PRs data needed.")
+    if args.fetch_branches or args.fetch_prs:
+        repos = github.fetch_org_repos()
+        all_open_prs = []
+        
+        for repo in repos:
+            last_fetch_timestamp = database.get_last_fetch_timestamp(repo['full_name']) or "1970-01-01T00:00:00Z"
+            
+            if github.has_repo_activity_since_last_fetch(repo_full_name=repo['full_name'], last_fetch_timestamp=last_fetch_timestamp):
+                if args.fetch_branches:
+                    print(f"Fetching latest commit data for branches in {repo['full_name']}")
+                    branch_info = github.fetch_branch_latest_commit(repo_full_name=repo['full_name'])
+                    if branch_info:
+                        database.insert_branches_to_db(branches=branch_info)
+
+                if args.fetch_prs:
+                    print(f"Fetching open PRs for {repo['full_name']}")
+                    open_prs = github.fetch_pull_requests_for_repo(repo_full_name=repo['full_name'])
+                    all_open_prs.extend(open_prs)
+
+                # Update the last fetch timestamp to the current time
+                database.update_last_fetch_timestamp(repo['full_name'], datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
+            else:
+                print(f"No activity since last fetch for {repo['full_name']}, skipping...")
+        
+        if all_open_prs:
+            insert_prs_to_db(all_open_prs, database, github)
+            print("Updated PRs data in the database.")
+        else:
+            print("No updates to PRs data needed.")
 
 # ------------------------------------------------------------------------------------------------------------------------------------------------
 if __name__ == "__main__":
+    container = Container()
+
+    container.config.database.path.from_env("DB_PATH")
+    
+    container.config.github.token.from_env("GH_TOKEN")
+    container.config.github.org.from_env("GH_ORG")
+    container.config.github.base_url.from_env("GH_BASE_URL")
+
+    container.wire(modules=[__name__])
+
     main()

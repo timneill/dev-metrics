@@ -10,7 +10,10 @@ COPY . .
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-ENV TOKEN=GITHUB_TOKEN
+ENV GH_TOKEN=GITHUB_TOKEN
+ENV GH_ORG=GITHUB_TARGET_ORG
+ENV GH_BASE_URL=GITHUB_BASE_URL
+ENV DB_PATH=DATABASE_PATH
 
 # Run open_prs.py when the container launches
-CMD ["python", "./main.py"]
+CMD ["python", "./dev-metrics/__main__.py"]

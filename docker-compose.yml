@@ -5,7 +5,10 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-        TOKEN: ${GITHUB_TOKEN}
+        GH_TOKEN: ${GITHUB_TOKEN}
+        GH_ORG: ${GITHUB_TARGET_ORG}
+        GH_BASE_URL: ${GITHUB_BASE_URL}
+        DB_PATH: ${DATABASE_PATH}
     volumes:
       - ./output:/usr/src/app/output
     
